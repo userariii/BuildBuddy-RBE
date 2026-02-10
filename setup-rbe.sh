@@ -62,6 +62,7 @@ fi
 
 # --- Enable RBE and General Settings ---
 export USE_RBE=1
+export USE_REWRAPPER=1
 export RBE_DIR="$RBE_RECLIENT_DIR"
 export NINJA_REMOTE_NUM_JOBS=${NINJA_REMOTE_NUM_JOBS:-72} # Use default if not set
 
