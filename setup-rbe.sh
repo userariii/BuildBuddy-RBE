@@ -112,7 +112,61 @@ export RBE_JAVA_POOL=default
 export RBE_METALAVA_POOL=default
 export RBE_LINT_POOL=default
 
-# --- 4. SUCCESS MESSAGE ---
+# --- 4. RBE gRPC HEALTH CHECK ---
+
+RBE_TEST_FILE="/tmp/rbe-health-check-$$.txt"
+echo "rbe-health-check" > "$RBE_TEST_FILE"
+
+RBE_TEST_HASH=$(sha256sum "$RBE_TEST_FILE" | awk '{print $1}')
+RBE_TEST_SIZE=$(stat -c%s "$RBE_TEST_FILE")
+
+RBE_TEST_OUTPUT=$(
+    "$RBE_RECLIENT_DIR/remotetool" \
+        -service="$RBE_service" \
+        -service_no_auth=true \
+        -use_rpc_credentials=false \
+        -remote_headers="$RBE_remote_headers" \
+        -operation=upload_blob \
+        -digest="${RBE_TEST_HASH}/${RBE_TEST_SIZE}" \
+        -path="$RBE_TEST_FILE" \
+        2>&1
+)
+
+RBE_TEST_STATUS=$?
+
+rm -f "$RBE_TEST_FILE"
+
+if [ "$RBE_TEST_STATUS" -ne 0 ]; then
+    echo
+    echo "❌ RBE gRPC failure detected."
+    echo "   Remote execution is not working."
+    echo "   Your build will most likely fail if you continue with RBE enabled."
+    echo
+    echo "   Server: ${RBE_service}"
+
+    if echo "$RBE_TEST_OUTPUT" | grep -qi "Invalid API key"; then
+        echo "   Reason: Invalid BuildBuddy API key."
+    elif echo "$RBE_TEST_OUTPUT" | grep -qi "Unauthenticated"; then
+        echo "   Reason: RBE authentication failure."
+    elif echo "$RBE_TEST_OUTPUT" | grep -qi "Unavailable"; then
+        echo "   Reason: RBE gRPC service unavailable."
+    elif echo "$RBE_TEST_OUTPUT" | grep -qi "DeadlineExceeded"; then
+        echo "   Reason: RBE connection timed out."
+    else
+        echo "   Reason: Unknown RBE communication error."
+    fi
+
+    echo
+    echo "   Error details:"
+    echo "$RBE_TEST_OUTPUT" | tail -5 | sed 's/^/   /'
+    echo
+
+    return 1 2>/dev/null || exit 1
+fi
+
+# --- 5. SUCCESS MESSAGE ---
+
+echo "✅ RBE gRPC health check passed."
 echo "✅ RBE environment configured by reading '${CONFIG_FILE}'"
 echo "   - BuildBuddy Instance: ${BB_INSTANCE}"
 echo "   - Remote Parallelism:  ${NINJA_REMOTE_NUM_JOBS}"
